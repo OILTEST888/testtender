@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>КонтрактУчёт</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f3f4f6; }
+    input, select, button, textarea { font-family: inherit; }
+    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const DEFAULT_USERS = [
+      { id: "1", username: "admin", password: "admin123", role: "admin", name: "Администратор" },
+      { id: "2", username: "buh", password: "buh123", role: "accountant", name: "Бухгалтерия" },
+      { id: "3", username: "dir", password: "dir123", role: "director", name: "Директор" },
+      { id: "4", username: "manager1", password: "mgr123", role: "manager", name: "Иванов И.И." },
+      { id: "5", username: "manager2", password: "mgr123", role: "manager", name: "Петрова А.С." },
+    ];
+
+    const ROLE_LABELS = { admin: "Администратор", accountant: "Бухгалтерия", director: "Директор", manager: "Менеджер" };
+
+    function fmt(n) {
+      if (n === "" || n === null || n === undefined) return "—";
+      const num = Number(n);
+      if (isNaN(num)) return "—";
+      const parts = num.toFixed(2).split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0");
+      return parts.join(",");
+    }
+
+    function calcEcon(c) {
+      const nmck = Number(c.nmck) || 0;
+      const purchases = c.purchases || [];
+      const stoimost = purchases.reduce((s, p) => s + (Number(p.stoimost) || 0), 0);
+      const dostavka = purchases.reduce((s, p) => s + (Number(p.dostavka) || 0), 0);
+      const rashod = stoimost + dostavka;
+      const nds = nmck * 0.05;
+      const dohod = nmck - nds;
+      const chp = (dohod - rashod) * 0.15;
+      const dolya = chp * 0.30;
+      return { nds, dohod, rashod, chp, dolya, stoimost, dostavka };
+    }
+
+    function fileToBase64(file) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res({ name: file.name, data: r.result });
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+
+    function load(key, def) {
+      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
+    }
+    function save(key, val) {
+      try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+    }
+
+    const S = {
+      inp: { border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 10px", fontSize: 13, width: "100%", boxSizing: "border-box", background: "white" },
+      th: { padding: "9px 10px", fontWeight: 600, fontSize: 12, color: "#6b7280", background: "#f9fafb", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" },
+      td: { padding: "7px 10px", verticalAlign: "middle", borderBottom: "1px solid #f3f4f6" },
+      btn: (bg, col) => ({ background: bg, color: col, border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontWeight: 500 }),
+    };
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [view, setView] = useState("contracts");
+      const [users, setUsers] = useState([]);
+      const [contracts, setContracts] = useState([]);
+      const [active, setActive] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const u = load("crm_users", DEFAULT_USERS);
+        setUsers(u);
+        if (!load("crm_users_init", false)) { save("crm_users", DEFAULT_USERS); save("crm_users_init", true); }
+        setContracts(load("crm_contracts", []));
+        const sess = load("crm_session", null);
+        if (sess) setUser(sess);
+        setLoading(false);
+      }, []);
+
+      function persistC(c) { setContracts(c); save("crm_contracts", c); }
+      function persistU(u) { setUsers(u); save("crm_users", u); }
+
+      function login(username, password) {
+        const found = users.find(u => u.username === username && u.password === password);
+        if (!found) return false;
+        setUser(found); save("crm_session", found); return true;
+      }
+      function logout() { setUser(null); save("crm_session", null); setView("contracts"); setActive(null); }
+
+      if (loading) return React.createElement("div", { style: { display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", color:"#6b7280" } }, "Загрузка...");
+      if (!user) return React.createElement(LoginPage, { onLogin: login });
+
+      const isManager = user.role === "manager";
+      const isAdmin = user.role === "admin";
+      const visible = isManager ? contracts.filter(c => c.managerId === user.id) : contracts;
+
+      return (
+        <div style={{ minHeight:"100vh", background:"#f3f4f6" }}>
+          <Nav user={user} onLogout={logout} view={view} onNav={v => { setView(v); setActive(null); }} isAdmin={isAdmin} />
+          <div style={{ maxWidth:1300, margin:"0 auto", padding:"24px 16px" }}>
+            {view === "contracts" && !active && (
+              <ContractsList contracts={visible} allContracts={contracts} users={users} user={user}
+                onOpen={c => setActive(c)} onNew={() => setActive({ _new: true })}
+                onSave={persistC} onNavPercent={() => setView("percent")} />
+            )}
+            {view === "contracts" && active && (
+              <ContractDetail contract={active._new ? null : active} user={user} users={users}
+                onBack={() => setActive(null)}
+                onSave={c => {
+                  const upd = active._new ? [...contracts, c] : contracts.map(x => x.id === c.id ? c : x);
+                  persistC(upd); setActive(c);
+                }} />
+            )}
+            {view === "percent" && (
+              <PercentView contracts={visible} allContracts={contracts} users={users} user={user}
+                onBack={() => setView("contracts")} onSave={persistC} />
+            )}
+            {view === "admin" && isAdmin && <AdminPanel users={users} onSave={persistU} />}
+          </div>
+        </div>
+      );
+    }
+
+    function Nav({ user, onLogout, view, onNav, isAdmin }) {
+      return (
+        <div style={{ background:"#1e3a5f", color:"white", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:52, position:"sticky", top:0, zIndex:50 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+            <span style={{ fontWeight:700, fontSize:16, marginRight:14 }}>📦 КонтрактУчёт</span>
+            {[["contracts","Контракты"],["percent","% Менеджера"],...(isAdmin?[["admin","Пользователи"]]:[])].map(([k,l])=>
+              <button key={k} onClick={()=>onNav(k)} style={{ background:view===k?"rgba(255,255,255,0.18)":"transparent", border:"none", color:"white", borderRadius:6, padding:"5px 13px", cursor:"pointer", fontSize:13, fontWeight:view===k?600:400 }}>{l}</button>
+            )}
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, fontSize:13 }}>
+            <span style={{ color:"#93c5fd" }}>{user.name} · {ROLE_LABELS[user.role]}</span>
+            <button onClick={onLogout} style={{ background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", color:"white", borderRadius:6, padding:"4px 12px", cursor:"pointer", fontSize:13 }}>Выйти</button>
+          </div>
+        </div>
+      );
+    }
+
+    function LoginPage({ onLogin }) {
+      const [u, setU] = useState(""); const [p, setP] = useState(""); const [err, setErr] = useState("");
+      function submit() { if (!onLogin(u, p)) setErr("Неверный логин или пароль"); }
+      return (
+        <div style={{ minHeight:"100vh", background:"#f3f4f6", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"white", borderRadius:12, padding:32, width:320, boxShadow:"0 2px 16px rgba(0,0,0,0.08)" }}>
+            <div style={{ textAlign:"center", marginBottom:24 }}>
+              <div style={{ fontSize:36, marginBottom:8 }}>📦</div>
+              <div style={{ fontWeight:700, fontSize:20, color:"#1e3a5f" }}>КонтрактУчёт</div>
+              <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Система управления контрактами</div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              <input style={S.inp} placeholder="Логин" value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} />
+              <input style={S.inp} type="password" placeholder="Пароль" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} />
+              {err && <div style={{ color:"#dc2626", fontSize:12 }}>{err}</div>}
+              <button onClick={submit} style={{ background:"#1e3a5f", color:"white", border:"none", borderRadius:7, padding:"9px", fontSize:14, cursor:"pointer", fontWeight:600 }}>Войти</button>
+            </div>
+            <div style={{ marginTop:16, padding:12, background:"#f8fafc", borderRadius:8, fontSize:11, color:"#6b7280" }}>
+              <div style={{ fontWeight:600, marginBottom:4 }}>Аккаунты:</div>
+              <div>admin / admin123 · Администратор</div>
+              <div>buh / buh123 · Бухгалтерия</div>
+              <div>dir / dir123 · Директор</div>
+              <div>manager1 / mgr123 · Иванов И.И.</div>
+              <div>manager2 / mgr123 · Петрова А.С.</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ContractsList({ contracts, allContracts, users, user, onOpen, onNew, onSave, onNavPercent }) {
+      const [search, setSearch] = useState("");
+      const [fMgr, setFMgr] = useState("all");
+      const [fStatus, setFStatus] = useState("all");
+      const [delTarget, setDelTarget] = useState(null);
+      const [adminPwd, setAdminPwd] = useState("");
+      const [pwdErr, setPwdErr] = useState("");
+      const isAdmin = user.role === "admin";
+      const isManager = user.role === "manager";
+
+      const filtered = contracts.filter(c => {
+        const q = search.toLowerCase();
+        const mQ = !q || (c.contractNo||"").toLowerCase().includes(q) || (c.purchases||[]).some(p=>(p.contragent||"").toLowerCase().includes(q));
+        const mM = fMgr === "all" || c.managerId === fMgr;
+        const mS = fStatus === "all" || c.status === fStatus;
+        return mQ && mM && mS;
+      });
+
+      const totNmck = filtered.reduce((s,c)=>s+(Number(c.nmck)||0),0);
+      const totChp = filtered.reduce((s,c)=>s+calcEcon(c).chp,0);
+      const totDolya = filtered.reduce((s,c)=>s+calcEcon(c).dolya,0);
+
+      function confirmDelete() {
+        const admin = users.find(u=>u.role==="admin");
+        if (!admin || adminPwd !== admin.password) { setPwdErr("Неверный пароль"); return; }
+        onSave(allContracts.filter(c=>c.id!==delTarget));
+        setDelTarget(null); setAdminPwd(""); setPwdErr("");
+      }
+
+      return (
+        <div>
+          {delTarget && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
+              <div style={{ background:"white", borderRadius:12, padding:28, width:360 }}>
+                <div style={{ fontWeight:600, fontSize:16, marginBottom:8 }}>Удаление контракта</div>
+                <div style={{ fontSize:13, color:"#6b7280", marginBottom:14 }}>Введите пароль администратора</div>
+                <input type="password" style={{ ...S.inp, marginBottom:6 }} value={adminPwd} onChange={e=>{setAdminPwd(e.target.value);setPwdErr("");}} placeholder="Пароль" onKeyDown={e=>e.key==="Enter"&&confirmDelete()} />
+                {pwdErr && <div style={{ color:"#dc2626", fontSize:12, marginBottom:6 }}>{pwdErr}</div>}
+                <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:10 }}>
+                  <button onClick={()=>{setDelTarget(null);setAdminPwd("");setPwdErr("");}} style={S.btn("#f3f4f6","#374151")}>Отмена</button>
+                  <button onClick={confirmDelete} style={S.btn("#dc2626","white")}>Удалить</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+            <div style={{ fontSize:22, fontWeight:700, color:"#111" }}>Контракты</div>
+            {(isAdmin||isManager) && (
+              <button onClick={onNew} style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", color:"white", border:"none", borderRadius:10, padding:"11px 24px", fontSize:15, cursor:"pointer", fontWeight:700, boxShadow:"0 4px 14px rgba(37,99,235,0.45)", display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:18 }}>＋</span> Новый контракт
+              </button>
+            )}
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:18 }}>
+            {[
+              { label:"Контрактов", val:filtered.length, unit:"шт", click:null },
+              { label:"Сумма НМЦК", val:fmt(totNmck), unit:"₽", click:null },
+              { label:"Чистая прибыль", val:fmt(totChp), unit:"₽", color:totChp>=0?"#166534":"#dc2626", click:null },
+              { label:"Доля менеджеров 30%", val:fmt(totDolya), unit:"₽", color:"#1d4ed8", click:onNavPercent },
+            ].map((s,i)=>(
+              <div key={i} onClick={s.click||undefined} style={{ background:"white", borderRadius:10, padding:"14px 18px", border:s.click?"1.5px solid #bfdbfe":"1px solid #e5e7eb", cursor:s.click?"pointer":"default" }}>
+                <div style={{ display:"flex", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:12, color:"#6b7280", fontWeight:500 }}>{s.label}</div>
+                  {s.click && <span style={{ fontSize:11, color:"#3b82f6" }}>→ детали</span>}
+                </div>
+                <div style={{ fontSize:20, fontWeight:700, color:s.color||"#111", marginTop:4 }}>{s.val} <span style={{ fontSize:13, fontWeight:400 }}>{s.unit}</span></div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+            <input style={{ ...S.inp, flex:1, minWidth:200 }} placeholder="Поиск по № контракта или контрагенту..." value={search} onChange={e=>setSearch(e.target.value)} />
+            {!isManager && (
+              <select style={{ ...S.inp, width:"auto" }} value={fMgr} onChange={e=>setFMgr(e.target.value)}>
+                <option value="all">Все менеджеры</option>
+                {users.filter(u=>u.role==="manager").map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            )}
+            <select style={{ ...S.inp, width:"auto" }} value={fStatus} onChange={e=>setFStatus(e.target.value)}>
+              <option value="all">Все статусы</option>
+              <option value="done">Исполнен</option>
+              <option value="active">Не исполнен</option>
+            </select>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"64px 0", color:"#9ca3af" }}>
+              <div style={{ fontSize:40, marginBottom:10 }}>📋</div>
+              <div style={{ fontSize:15 }}>Контрактов не найдено</div>
+              {(isAdmin||isManager) && <button onClick={onNew} style={{ marginTop:14, background:"#2563eb", color:"white", border:"none", borderRadius:8, padding:"9px 22px", cursor:"pointer", fontSize:14, fontWeight:600 }}>Создать первый контракт</button>}
+            </div>
+          ) : (
+            <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.th, textAlign:"center", width:40 }}>#</th>
+                    <th style={S.th}>№ контракта</th>
+                    {!isManager && <th style={S.th}>Менеджер</th>}
+                    <th style={S.th}>Контрагенты</th>
+                    <th style={{ ...S.th, textAlign:"right" }}>НМЦК ₽</th>
+                    <th style={{ ...S.th, textAlign:"right" }}>Расход ₽</th>
+                    <th style={{ ...S.th, textAlign:"right" }}>ЧП ₽</th>
+                    <th style={{ ...S.th, textAlign:"right" }}>Доля 30% ₽</th>
+                    <th style={{ ...S.th, textAlign:"center" }}>Статус</th>
+                    <th style={S.th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((c,idx)=>{
+                    const e = calcEcon(c);
+                    const mgr = users.find(u=>u.id===c.managerId);
+                    const cts = [...new Set((c.purchases||[]).map(p=>p.contragent).filter(Boolean))];
+                    return (
+                      <tr key={c.id} onMouseEnter={el=>el.currentTarget.style.background="#f9fafb"} onMouseLeave={el=>el.currentTarget.style.background=""}>
+                        <td style={{ ...S.td, textAlign:"center", color:"#9ca3af", fontSize:12 }}>{idx+1}</td>
+                        <td style={{ ...S.td, color:"#1d4ed8", fontWeight:700, cursor:"pointer" }} onClick={()=>onOpen(c)}>{c.contractNo||"—"}</td>
+                        {!isManager && <td style={{ ...S.td, color:"#6b7280" }}>{mgr?.name||"—"}</td>}
+                        <td style={{ ...S.td, maxWidth:200 }}>
+                          {cts.length===0 ? <span style={{ color:"#9ca3af" }}>—</span> :
+                            cts.slice(0,2).map((ct,i)=><span key={i} style={{ display:"inline-block", background:"#f3f4f6", borderRadius:4, padding:"1px 7px", fontSize:11, marginRight:4 }}>{ct}</span>)}
+                          {cts.length>2 && <span style={{ fontSize:11, color:"#6b7280" }}>+{cts.length-2}</span>}
+                        </td>
+                        <td style={{ ...S.td, textAlign:"right", fontWeight:600 }}>{fmt(c.nmck)}</td>
+                        <td style={{ ...S.td, textAlign:"right" }}>{fmt(e.rashod)}</td>
+                        <td style={{ ...S.td, textAlign:"right", fontWeight:700, color:e.chp>=0?"#166534":"#dc2626" }}>{fmt(e.chp)}</td>
+                        <td style={{ ...S.td, textAlign:"right", fontWeight:600, color:"#1d4ed8" }}>{fmt(e.dolya)}</td>
+                        <td style={{ ...S.td, textAlign:"center" }}>
+                          {(isAdmin||isManager) ? (
+                            <button onClick={()=>onSave(allContracts.map(x=>x.id===c.id?{...x,status:c.status==="done"?"active":"done"}:x))}
+                              style={{ background:c.status==="done"?"#dcfce7":"#f3f4f6", color:c.status==="done"?"#166534":"#6b7280", border:"none", borderRadius:6, padding:"3px 10px", fontSize:12, cursor:"pointer", fontWeight:500 }}>
+                              {c.status==="done"?"✓ Исполнен":"Не исполнен"}
+                            </button>
+                          ) : (
+                            <span style={{ background:c.status==="done"?"#dcfce7":"#f3f4f6", color:c.status==="done"?"#166534":"#6b7280", borderRadius:6, padding:"3px 10px", fontSize:12, fontWeight:500 }}>
+                              {c.status==="done"?"✓ Исполнен":"Не исполнен"}
+                            </span>
+                          )}
+                        </td>
+                        <td style={S.td}>
+                          <div style={{ display:"flex", gap:5, justifyContent:"flex-end" }}>
+                            <button onClick={()=>onOpen(c)} style={{ ...S.btn("#eff6ff","#1d4ed8"), padding:"3px 12px", fontSize:12 }}>Открыть</button>
+                            {isAdmin && <button onClick={()=>{setDelTarget(c.id);setAdminPwd("");setPwdErr("");}} style={{ ...S.btn("#fef2f2","#dc2626"), padding:"3px 10px", fontSize:12 }}>✕</button>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ContractDetail({ contract, user, users, onBack, onSave }) {
+      const isNew = !contract;
+      const [tab, setTab] = useState("main");
+      const [data, setData] = useState(() => contract || {
+        id: Date.now().toString(),
+        contractNo:"", nmck:"", status:"active",
+        managerId: user.role==="manager"?user.id:"",
+        purchases:[],
+        contractFile:null, tzFile:null, outgoingUpds:[],
+        payout:{ paid:"", date:"" },
+        createdAt: new Date().toISOString(),
+      });
+      const [dirty, setDirty] = useState(isNew);
+
+      function upd(field, val) { setData(d=>({...d,[field]:val})); setDirty(true); }
+
+      function doSave() {
+        if (!data.contractNo.trim()) return alert("Укажите № контракта");
+        if (!data.nmck || Number(data.nmck)<=0) return alert("Укажите НМЦК");
+        onSave(data); setDirty(false);
+      }
+
+      const econ = calcEcon(data);
+      const canEdit = user.role==="admin" || user.role==="manager";
+      const mgr = users.find(u=>u.id===data.managerId);
+      const tabs = [["main","Основное"],["purchases","Закупки / Счета"],["econ","Экономика"],["docs","Документы"]];
+
+      return (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18, flexWrap:"wrap" }}>
+            <button onClick={onBack} style={{ background:"none", border:"none", color:"#1d4ed8", cursor:"pointer", fontSize:13, padding:0, fontWeight:500 }}>← Назад</button>
+            <div style={{ fontSize:20, fontWeight:700, color:"#111" }}>{isNew?"Новый контракт":`Контракт ${data.contractNo}`}</div>
+            {user.role!=="manager" && mgr && <span style={{ fontSize:12, background:"#eff6ff", color:"#1d4ed8", padding:"3px 10px", borderRadius:6, fontWeight:500 }}>{mgr.name}</span>}
+            <span style={{ fontSize:12, background:data.status==="done"?"#dcfce7":"#fef9c3", color:data.status==="done"?"#166534":"#92400e", padding:"3px 10px", borderRadius:6, fontWeight:500 }}>
+              {data.status==="done"?"✓ Исполнен":"⏳ Не исполнен"}
+            </span>
+            {dirty && canEdit && (
+              <button onClick={doSave} style={{ marginLeft:"auto", background:"#166534", color:"white", border:"none", borderRadius:8, padding:"8px 20px", fontSize:13, cursor:"pointer", fontWeight:600 }}>💾 Сохранить</button>
+            )}
+          </div>
+
+          <div style={{ display:"flex", gap:2, marginBottom:0 }}>
+            {tabs.map(([k,l])=>(
+              <button key={k} onClick={()=>setTab(k)} style={{ padding:"9px 20px", fontSize:13, border:"1px solid #e5e7eb", borderBottom:tab===k?"1px solid white":"1px solid #e5e7eb", background:tab===k?"white":"#f3f4f6", cursor:"pointer", borderRadius:"8px 8px 0 0", fontWeight:tab===k?700:400, color:tab===k?"#1e3a5f":"#6b7280", position:"relative", zIndex:tab===k?1:0, marginBottom:tab===k?-1:0 }}>{l}</button>
+            ))}
+          </div>
+
+          <div style={{ background:"white", border:"1px solid #e5e7eb", borderRadius:"0 10px 10px 10px", padding:24 }}>
+            {tab==="main" && <MainTab data={data} upd={upd} canEdit={canEdit} user={user} users={users} econ={econ} />}
+            {tab==="purchases" && <PurchasesTab data={data} upd={upd} canEdit={canEdit} econ={econ} />}
+            {tab==="econ" && <EconTab data={data} upd={upd} econ={econ} canEdit={canEdit} />}
+            {tab==="docs" && <DocsTab data={data} upd={upd} canEdit={canEdit} />}
+          </div>
+
+          {dirty && canEdit && (
+            <div style={{ textAlign:"right", marginTop:14 }}>
+              <button onClick={doSave} style={{ background:"#166534", color:"white", border:"none", borderRadius:8, padding:"10px 28px", fontSize:14, cursor:"pointer", fontWeight:600 }}>💾 Сохранить изменения</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function MainTab({ data, upd, canEdit, user, users, econ }) {
+      return (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:"#374151", marginBottom:14, paddingBottom:8, borderBottom:"2px solid #e5e7eb" }}>Основные данные контракта</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#6b7280", marginBottom:4, fontWeight:500 }}>№ Контракта *</div>
+                <input disabled={!canEdit} style={{ ...S.inp, fontSize:15, fontWeight:600 }} value={data.contractNo} onChange={e=>upd("contractNo",e.target.value)} placeholder="№ 123-Ф/2024" />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#6b7280", marginBottom:4, fontWeight:500 }}>НМЦК (₽) *</div>
+                <input disabled={!canEdit} type="number" style={{ ...S.inp, fontSize:15, fontWeight:600 }} value={data.nmck} onChange={e=>upd("nmck",e.target.value)} placeholder="0.00" />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#6b7280", marginBottom:4, fontWeight:500 }}>Статус</div>
+                {canEdit
+                  ? <select style={S.inp} value={data.status} onChange={e=>upd("status",e.target.value)}>
+                      <option value="active">Не исполнен</option>
+                      <option value="done">Исполнен</option>
+                    </select>
+                  : <div style={{ ...S.inp, background:"#f9fafb" }}>{data.status==="done"?"✓ Исполнен":"⏳ Не исполнен"}</div>}
+              </div>
+              {user.role==="admin" && (
+                <div>
+                  <div style={{ fontSize:11, color:"#6b7280", marginBottom:4, fontWeight:500 }}>Менеджер</div>
+                  <select style={S.inp} value={data.managerId} onChange={e=>upd("managerId",e.target.value)}>
+                    <option value="">—</option>
+                    {users.filter(u=>u.role==="manager").map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:"#374151", marginBottom:14, paddingBottom:8, borderBottom:"2px solid #e5e7eb" }}>Сводка</div>
+            {[
+              { label:"Кол-во счетов", val:`${(data.purchases||[]).length} шт` },
+              { label:"НМЦК", val:`${fmt(data.nmck)} ₽` },
+              { label:"Итого расход", val:`${fmt(econ.rashod)} ₽` },
+              { label:"Чистая прибыль", val:`${fmt(econ.chp)} ₽`, color:econ.chp>=0?"#166534":"#dc2626" },
+              { label:"Доля менеджера 30%", val:`${fmt(econ.dolya)} ₽`, color:"#1d4ed8" },
+            ].map((r,i)=>(
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"9px 14px", background:"#f9fafb", borderRadius:7, border:"1px solid #f3f4f6", marginBottom:6 }}>
+                <span style={{ fontSize:13, color:"#6b7280" }}>{r.label}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:r.color||"#111" }}>{r.val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function PurchasesTab({ data, upd, canEdit, econ }) {
+      const purchases = data.purchases || [];
+
+      function addRow() {
+        upd("purchases", [...purchases, { id:Date.now().toString(), contragent:"", invoiceNo:"", invoiceDate:"", stoimost:"", dostavka:"", updIn:null }]);
+      }
+      function updRow(id, field, val) { upd("purchases", purchases.map(p=>p.id===id?{...p,[field]:val}:p)); }
+      function removeRow(id) { upd("purchases", purchases.filter(p=>p.id!==id)); }
+
+      const totalS = purchases.reduce((s,p)=>s+(Number(p.stoimost)||0),0);
+      const totalD = purchases.reduce((s,p)=>s+(Number(p.dostavka)||0),0);
+
+      return (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:"#374151" }}>Закупки и счета на оплату</div>
+              <div style={{ fontSize:12, color:"#9ca3af", marginTop:2 }}>Каждая строка — один счёт от контрагента</div>
+            </div>
+            {canEdit && <button onClick={addRow} style={{ background:"#eff6ff", color:"#1d4ed8", border:"1px dashed #93c5fd", borderRadius:7, padding:"7px 16px", fontSize:13, cursor:"pointer", fontWeight:600 }}>+ Добавить счёт</button>}
+          </div>
+
+          {purchases.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"40px 0", color:"#9ca3af", border:"2px dashed #e5e7eb", borderRadius:10 }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>🧾</div>
+              <div>Счетов пока нет</div>
+              {canEdit && <button onClick={addRow} style={{ marginTop:12, background:"#2563eb", color:"white", border:"none", borderRadius:7, padding:"7px 18px", cursor:"pointer", fontSize:13, fontWeight:600 }}>+ Добавить счёт</button>}
+            </div>
+          ) : (
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.th, width:30 }}>#</th>
+                    <th style={{ ...S.th, minWidth:180 }}>Контрагент</th>
+                    <th style={{ ...S.th, minWidth:120 }}>№ счёта</th>
+                    <th style={{ ...S.th, minWidth:130 }}>Дата счёта</th>
+                    <th style={{ ...S.th, minWidth:120, textAlign:"right" }}>Стоимость ₽</th>
+                    <th style={{ ...S.th, minWidth:100, textAlign:"right" }}>Доставка ₽</th>
+                    <th style={{ ...S.th, minWidth:140 }}>УПД входящий</th>
+                    {canEdit && <th style={{ ...S.th, width:36 }}></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchases.map((p,idx)=>(
+                    <tr key={p.id} style={{ background:idx%2===0?"white":"#fafafa" }}>
+                      <td style={{ ...S.td, color:"#9ca3af", fontSize:11, textAlign:"center" }}>{idx+1}</td>
+                      <td style={S.td}><input disabled={!canEdit} style={S.inp} value={p.contragent} onChange={e=>updRow(p.id,"contragent",e.target.value)} placeholder="ООО Ромашка" /></td>
+                      <td style={S.td}><input disabled={!canEdit} style={S.inp} value={p.invoiceNo} onChange={e=>updRow(p.id,"invoiceNo",e.target.value)} placeholder="Сч-001" /></td>
+                      <td style={S.td}><input disabled={!canEdit} type="date" style={S.inp} value={p.invoiceDate} onChange={e=>updRow(p.id,"invoiceDate",e.target.value)} /></td>
+                      <td style={S.td}><input disabled={!canEdit} type="number" style={{ ...S.inp, textAlign:"right" }} value={p.stoimost} onChange={e=>updRow(p.id,"stoimost",e.target.value)} placeholder="0.00" /></td>
+                      <td style={S.td}><input disabled={!canEdit} type="number" style={{ ...S.inp, textAlign:"right" }} value={p.dostavka} onChange={e=>updRow(p.id,"dostavka",e.target.value)} placeholder="0.00" /></td>
+                      <td style={S.td}><UpdInline value={p.updIn} onChange={v=>updRow(p.id,"updIn",v)} canEdit={canEdit} /></td>
+                      {canEdit && <td style={S.td}><button onClick={()=>removeRow(p.id)} style={{ background:"none", border:"none", color:"#dc2626", cursor:"pointer", fontSize:16 }}>✕</button></td>}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop:"2px solid #e5e7eb", background:"#f9fafb" }}>
+                    <td colSpan={4} style={{ ...S.td, fontWeight:700 }}>Итого</td>
+                    <td style={{ ...S.td, textAlign:"right", fontWeight:700 }}>{fmt(totalS)} ₽</td>
+                    <td style={{ ...S.td, textAlign:"right", fontWeight:700 }}>{fmt(totalD)} ₽</td>
+                    <td colSpan={canEdit?2:1} style={{ ...S.td, textAlign:"right", fontWeight:700 }}>Расход: <span style={{ color:"#dc2626" }}>{fmt(totalS+totalD)} ₽</span></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {canEdit && purchases.length > 0 && (
+            <button onClick={addRow} style={{ marginTop:10, width:"100%", background:"none", border:"1px dashed #93c5fd", color:"#1d4ed8", borderRadius:7, padding:"7px", fontSize:13, cursor:"pointer" }}>+ Добавить ещё счёт</button>
+          )}
+        </div>
+      );
+    }
+
+    function UpdInline({ value, onChange, canEdit }) {
+      const [showMenu, setShowMenu] = useState(false);
+      if (value) {
+        return (
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            {value.mode==="edo"
+              ? <span style={{ fontSize:12, color:"#166534", background:"#f0fdf4", padding:"3px 8px", borderRadius:5, border:"1px solid #bbf7d0" }}>✓ ЭДО</span>
+              : <a href={value.data} download={value.name} style={{ fontSize:12, color:"#1d4ed8", maxWidth:100, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"block" }}>📄 {value.name}</a>}
+            {canEdit && <button onClick={()=>onChange(null)} style={{ border:"none", background:"none", color:"#dc2626", cursor:"pointer", fontSize:13 }}>✕</button>}
+          </div>
+        );
+      }
+      if (!canEdit) return <span style={{ fontSize:12, color:"#9ca3af" }}>—</span>;
+      return (
+        <div style={{ position:"relative" }}>
+          {!showMenu ? (
+            <button onClick={()=>setShowMenu(true)} style={{ fontSize:12, color:"#6b7280", background:"#f9fafb", border:"1px dashed #d1d5db", borderRadius:5, padding:"3px 10px", cursor:"pointer" }}>📎 Прикрепить</button>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+              <label style={{ cursor:"pointer", fontSize:12, color:"#1d4ed8", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:5, padding:"3px 8px", display:"inline-flex", alignItems:"center", gap:4 }}>
+                📁 Файл
+                <input type="file" style={{ display:"none" }} onChange={async e=>{
+                  const f=e.target.files[0]; if(!f) return;
+                  try { const d=await fileToBase64(f); onChange({mode:"file",name:f.name,data:d.data}); setShowMenu(false); } catch{}
+                }} />
+              </label>
+              <button onClick={()=>{onChange({mode:"edo",name:"ЭДО",data:null});setShowMenu(false);}} style={{ fontSize:12, color:"#166534", background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:5, padding:"3px 8px", cursor:"pointer" }}>✓ В ЭДО</button>
+              <button onClick={()=>setShowMenu(false)} style={{ fontSize:11, color:"#9ca3af", background:"none", border:"none", cursor:"pointer" }}>отмена</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function EconTab({ data, upd, econ, canEdit }) {
+      const nmck = Number(data.nmck)||0;
+      const rows = [
+        { label:"НМЦК", val:nmck, note:"Начальная максимальная цена контракта" },
+        { label:"НДС 5%", val:econ.nds, neg:true, indent:true, note:"5% от НМЦК" },
+        { label:"Доход", val:econ.dohod, bold:true, note:"НМЦК − НДС" },
+        { label:"Расход (все счета)", val:econ.rashod, neg:true, indent:true, note:"Σ Стоимость + Доставка" },
+        { label:"Чистая прибыль (ЧП)", val:econ.chp, bold:true, big:true, note:"(Доход − Расход) × 15%" },
+        { label:"Доля менеджера 30%", val:econ.dolya, note:"30% от ЧП" },
+      ];
+      return (
+        <div style={{ display:"grid", gridTemplateColumns:"380px 1fr", gap:28 }}>
+          <div style={{ border:"1px solid #e5e7eb", borderRadius:10, overflow:"hidden" }}>
+            {rows.map((r,i)=>(
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 16px", background:r.big?"#f0fdf4":r.bold?"#f8faff":"white", borderBottom:i<rows.length-1?"1px solid #f3f4f6":"none" }}>
+                <div>
+                  <div style={{ fontSize:13, color:r.indent?"#6b7280":"#374151", paddingLeft:r.indent?14:0, fontWeight:r.bold?600:400 }}>{r.label}</div>
+                  <div style={{ fontSize:11, color:"#9ca3af", paddingLeft:r.indent?14:0 }}>{r.note}</div>
+                </div>
+                <div style={{ fontSize:r.big?17:14, fontWeight:r.bold?700:400, color:r.neg?"#dc2626":r.big?(r.val>=0?"#166534":"#dc2626"):"#111", fontFamily:"monospace" }}>
+                  {r.neg?"−":""}{fmt(Math.abs(r.val))} ₽
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#374151", marginBottom:14 }}>Распределение НМЦК</div>
+            {[
+              { label:"Расход", val:econ.rashod, color:"#f87171" },
+              { label:"НДС 5%", val:econ.nds, color:"#fb923c" },
+              { label:"Доля менеджера 30%", val:econ.dolya, color:"#60a5fa" },
+              { label:"Остаток ЧП", val:econ.chp-econ.dolya, color:"#4ade80" },
+            ].map((b,i)=>{
+              const pct = Math.max(0,Math.min(100,(b.val/(nmck||1))*100));
+              return (
+                <div key={i} style={{ marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"#6b7280", marginBottom:4 }}>
+                    <span>{b.label}</span><span>{fmt(b.val)} ₽ ({pct.toFixed(1)}%)</span>
+                  </div>
+                  <div style={{ height:10, background:"#f3f4f6", borderRadius:5, overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:pct+"%", background:b.color, borderRadius:5 }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    function DocsTab({ data, upd, canEdit }) {
+      const outUpds = data.outgoingUpds || [];
+      function addOutUpd() { upd("outgoingUpds", [...outUpds, { id:Date.now().toString(), number:"", date:"", amount:"", file:null, status:"issued" }]); }
+      function updU(id, field, val) { upd("outgoingUpds", outUpds.map(u=>u.id===id?{...u,[field]:val}:u)); }
+
+      const mandatory = [
+        { key:"contractFile", label:"Контракт", hint:"Файл подписанного контракта (обязательно)" },
+        { key:"tzFile", label:"Техническое задание", hint:"ТЗ к контракту (обязательно)" },
+      ];
+
+      function typeIcon(name) {
+        const ext=(name||"").split(".").pop().toLowerCase();
+        if(ext==="pdf") return "📕"; if(["doc","docx"].includes(ext)) return "📘";
+        if(["xls","xlsx"].includes(ext)) return "📗"; return "📄";
+      }
+
+      return (
+        <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:"#374151", marginBottom:14, paddingBottom:8, borderBottom:"2px solid #e5e7eb" }}>Обязательные документы *</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+              {mandatory.map(s=>(
+                <div key={s.key} style={{ border:"1px solid #e5e7eb", borderRadius:8, padding:"14px 16px" }}>
+                  <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>{s.label} <span style={{ color:"#dc2626" }}>*</span></div>
+                  <div style={{ fontSize:11, color:"#9ca3af", marginBottom:10 }}>{s.hint}</div>
+                  {data[s.key] ? (
+                    <div style={{ display:"flex", alignItems:"center", gap:10, background:"#f9fafb", borderRadius:6, padding:"8px 12px" }}>
+                      <span style={{ fontSize:20 }}>{typeIcon(data[s.key].name)}</span>
+                      <a href={data[s.key].data} download={data[s.key].name} style={{ fontSize:13, color:"#1d4ed8", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{data[s.key].name}</a>
+                      {canEdit && <button onClick={()=>upd(s.key,null)} style={{ border:"none", background:"none", color:"#dc2626", cursor:"pointer", fontSize:16 }}>✕</button>}
+                    </div>
+                  ) : canEdit ? (
+                    <label style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:"#eff6ff", color:"#1d4ed8", border:"1px dashed #bfdbfe", borderRadius:6, padding:"9px 14px", fontSize:13 }}>
+                      📎 Загрузить {s.label}
+                      <input type="file" style={{ display:"none" }} accept=".pdf,.doc,.docx" onChange={async e=>{
+                        const f=e.target.files[0]; if(!f) return;
+                        try { const d=await fileToBase64(f); upd(s.key,d); } catch{}
+                      }} />
+                    </label>
+                  ) : <span style={{ fontSize:13, color:"#dc2626" }}>⚠ Не загружен</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, paddingBottom:8, borderBottom:"2px solid #e5e7eb" }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#374151" }}>📤 Исходящие УПД (заказчику)</div>
+                <div style={{ fontSize:12, color:"#9ca3af", marginTop:2 }}>УПД, выставленные заказчику по данному контракту</div>
+              </div>
+              {canEdit && <button onClick={addOutUpd} style={{ background:"#eff6ff", color:"#1d4ed8", border:"1px dashed #93c5fd", borderRadius:7, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>+ Добавить УПД</button>}
+            </div>
+            {outUpds.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"24px 0", color:"#9ca3af", border:"1px dashed #e5e7eb", borderRadius:8 }}>
+                Исходящих УПД нет{canEdit&&<> · <button onClick={addOutUpd} style={{ color:"#1d4ed8", background:"none", border:"none", cursor:"pointer", fontSize:13 }}>добавить</button></>}
+              </div>
+            ) : (
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr>
+                    <th style={S.th}>№ УПД</th><th style={S.th}>Дата</th>
+                    <th style={{ ...S.th, textAlign:"right" }}>Сумма ₽</th>
+                    <th style={S.th}>Файл</th><th style={S.th}>Статус</th>
+                    {canEdit && <th style={S.th}></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {outUpds.map(u=>(
+                    <tr key={u.id}>
+                      <td style={S.td}><input disabled={!canEdit} style={S.inp} value={u.number} onChange={e=>updU(u.id,"number",e.target.value)} placeholder="УПД-001" /></td>
+                      <td style={S.td}><input disabled={!canEdit} type="date" style={S.inp} value={u.date} onChange={e=>updU(u.id,"date",e.target.value)} /></td>
+                      <td style={S.td}><input disabled={!canEdit} type="number" style={{ ...S.inp, textAlign:"right" }} value={u.amount} onChange={e=>updU(u.id,"amount",e.target.value)} /></td>
+                      <td style={S.td}>
+                        {u.file ? (
+                          <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                            <a href={u.file.data} download={u.file.name} style={{ fontSize:12, color:"#1d4ed8" }}>📄 {u.file.name}</a>
+                            {canEdit && <button onClick={()=>updU(u.id,"file",null)} style={{ border:"none", background:"none", color:"#dc2626", cursor:"pointer" }}>✕</button>}
+                          </div>
+                        ) : canEdit ? (
+                          <label style={{ cursor:"pointer", fontSize:12, color:"#1d4ed8" }}>📎 Загрузить
+                            <input type="file" style={{ display:"none" }} onChange={async e=>{
+                              const f=e.target.files[0]; if(!f) return;
+                              try { const d=await fileToBase64(f); updU(u.id,"file",d); } catch{}
+                            }} />
+                          </label>
+                        ) : <span style={{ color:"#9ca3af", fontSize:12 }}>—</span>}
+                      </td>
+                      <td style={S.td}>
+                        {canEdit ? (
+                          <select style={{ ...S.inp, width:"auto" }} value={u.status} onChange={e=>updU(u.id,"status",e.target.value)}>
+                            <option value="issued">Выставлен</option>
+                            <option value="signed">Подписан</option>
+                            <option value="paid">Оплачен</option>
+                          </select>
+                        ) : (
+                          <span style={{ fontSize:12, padding:"2px 8px", borderRadius:5, background:u.status==="paid"?"#dcfce7":u.status==="signed"?"#fef9c3":"#f3f4f6", color:u.status==="paid"?"#166534":u.status==="signed"?"#92400e":"#6b7280", fontWeight:500 }}>
+                            {u.status==="paid"?"Оплачен":u.status==="signed"?"Подписан":"Выставлен"}
+                          </span>
+                        )}
+                      </td>
+                      {canEdit && <td style={S.td}><button onClick={()=>upd("outgoingUpds",outUpds.filter(x=>x.id!==u.id))} style={{ border:"none", background:"none", color:"#dc2626", cursor:"pointer", fontSize:14 }}>✕</button></td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function PercentView({ contracts, allContracts, users, user, onBack, onSave }) {
+      const canEdit = user.role === "admin";
+      const isManager = user.role === "manager";
+      function updPayout(id, field, val) { onSave(allContracts.map(c=>c.id!==id?c:{...c,payout:{...(c.payout||{}),[field]:val}})); }
+      const totalDue = contracts.reduce((s,c)=>s+calcEcon(c).dolya,0);
+      const totalPaid = contracts.reduce((s,c)=>s+(Number(c.payout?.paid)||0),0);
+      const totalLeft = totalDue-totalPaid;
+      return (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+            <button onClick={onBack} style={{ background:"none", border:"none", color:"#1d4ed8", cursor:"pointer", fontSize:13, padding:0 }}>← Назад</button>
+            <div style={{ fontSize:20, fontWeight:700, color:"#111" }}>Процент менеджера (30% от ЧП)</div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+            {[
+              { label:"К выплате", val:fmt(totalDue), color:"#1d4ed8" },
+              { label:"Выплачено", val:fmt(totalPaid), color:"#166534" },
+              { label:"Остаток", val:fmt(totalLeft), color:totalLeft>0?"#dc2626":"#166534" },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"white", borderRadius:8, padding:"14px 18px", border:"1px solid #e5e7eb" }}>
+                <div style={{ fontSize:12, color:"#6b7280" }}>{s.label}</div>
+                <div style={{ fontSize:20, fontWeight:700, color:s.color, marginTop:2 }}>{s.val} <span style={{ fontSize:12, fontWeight:400 }}>₽</span></div>
+              </div>
+            ))}
+          </div>
+          <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <thead>
+                <tr>
+                  <th style={S.th}>#</th><th style={S.th}>№ контракта</th>
+                  {!isManager && <th style={S.th}>Менеджер</th>}
+                  <th style={{ ...S.th, textAlign:"right" }}>К выплате ₽</th>
+                  <th style={{ ...S.th, textAlign:"right" }}>Выплачено ₽</th>
+                  <th style={{ ...S.th, textAlign:"right" }}>Остаток ₽</th>
+                  <th style={{ ...S.th, textAlign:"center" }}>Дата</th>
+                  <th style={{ ...S.th, textAlign:"center" }}>Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contracts.map((c,idx)=>{
+                  const due=calcEcon(c).dolya, paid=Number(c.payout?.paid)||0, left=due-paid, isPaid=paid>=due&&due>0;
+                  const mgr=users.find(u=>u.id===c.managerId);
+                  return (
+                    <tr key={c.id} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                      <td style={{ ...S.td, color:"#9ca3af", fontSize:12 }}>{idx+1}</td>
+                      <td style={{ ...S.td, color:"#1d4ed8", fontWeight:600 }}>{c.contractNo||"—"}</td>
+                      {!isManager && <td style={{ ...S.td, color:"#6b7280" }}>{mgr?.name||"—"}</td>}
+                      <td style={{ ...S.td, textAlign:"right", fontWeight:700, color:"#1d4ed8" }}>{fmt(due)}</td>
+                      <td style={{ ...S.td, textAlign:"right" }}>
+                        {canEdit ? <input type="number" style={{ ...S.inp, width:110, textAlign:"right" }} value={c.payout?.paid||""} onChange={e=>updPayout(c.id,"paid",e.target.value)} />
+                          : <span style={{ fontWeight:500, color:"#166534" }}>{fmt(paid)}</span>}
+                      </td>
+                      <td style={{ ...S.td, textAlign:"right", fontWeight:700, color:left>0.01?"#dc2626":"#166534" }}>{fmt(left)}</td>
+                      <td style={{ ...S.td, textAlign:"center" }}>
+                        {canEdit ? <input type="date" style={{ ...S.inp, width:130 }} value={c.payout?.date||""} onChange={e=>updPayout(c.id,"date",e.target.value)} />
+                          : <span>{c.payout?.date?new Date(c.payout.date).toLocaleDateString("ru-RU"):"—"}</span>}
+                      </td>
+                      <td style={{ ...S.td, textAlign:"center" }}>
+                        <span style={{ background:isPaid?"#dcfce7":paid>0?"#fef9c3":"#f3f4f6", color:isPaid?"#166534":paid>0?"#92400e":"#6b7280", borderRadius:6, padding:"3px 10px", fontSize:12, fontWeight:500 }}>
+                          {isPaid?"✓ Выплачено":paid>0?"Частично":"Не выплачено"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    function AdminPanel({ users, onSave }) {
+      const [form, setForm] = useState({ username:"", password:"", name:"", role:"manager" });
+      const [err, setErr] = useState("");
+      const [editId, setEditId] = useState(null);
+      const [editPwd, setEditPwd] = useState("");
+      function addUser() {
+        if (!form.username||!form.password||!form.name){setErr("Заполните все поля");return;}
+        if (users.find(u=>u.username===form.username)){setErr("Логин занят");return;}
+        onSave([...users,{...form,id:Date.now().toString()}]);
+        setForm({username:"",password:"",name:"",role:"manager"});setErr("");
+      }
+      function changePwd(id){if(!editPwd)return;onSave(users.map(u=>u.id===id?{...u,password:editPwd}:u));setEditId(null);setEditPwd("");}
+      return (
+        <div style={{ maxWidth:780 }}>
+          <div style={{ fontSize:20, fontWeight:700, marginBottom:20 }}>Управление пользователями</div>
+          <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:"18px 20px", marginBottom:20 }}>
+            <div style={{ fontSize:14, fontWeight:600, marginBottom:14 }}>Добавить пользователя</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+              {[["Имя","name","text"],["Логин","username","text"],["Пароль","password","password"]].map(([l,k,t])=>(
+                <div key={k}><div style={{ fontSize:11, color:"#6b7280", marginBottom:4 }}>{l}</div><input type={t} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} style={S.inp} /></div>
+              ))}
+              <div><div style={{ fontSize:11, color:"#6b7280", marginBottom:4 }}>Роль</div>
+                <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={S.inp}>
+                  <option value="manager">Менеджер</option><option value="accountant">Бухгалтерия</option>
+                  <option value="director">Директор</option><option value="admin">Администратор</option>
+                </select>
+              </div>
+            </div>
+            {err && <div style={{ color:"#dc2626", fontSize:12, marginBottom:8 }}>{err}</div>}
+            <button onClick={addUser} style={S.btn("#1e3a5f","white")}>Добавить</button>
+          </div>
+          <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", overflow:"hidden" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <thead><tr style={{ background:"#f9fafb", borderBottom:"1px solid #e5e7eb" }}>{["Имя","Логин","Роль",""].map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {users.map(u=>(
+                  <tr key={u.id} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                    <td style={{ ...S.td, fontWeight:500 }}>{u.name}</td>
+                    <td style={{ ...S.td, color:"#6b7280" }}>{u.username}</td>
+                    <td style={S.td}><span style={{ background:u.role==="admin"?"#fef3c7":u.role==="accountant"?"#eff6ff":u.role==="director"?"#f3e8ff":"#f0fdf4", color:u.role==="admin"?"#92400e":u.role==="accountant"?"#1d4ed8":u.role==="director"?"#7c3aed":"#166534", padding:"2px 10px", borderRadius:6, fontSize:12, fontWeight:500 }}>{ROLE_LABELS[u.role]}</span></td>
+                    <td style={{ ...S.td, textAlign:"right" }}>
+                      {editId===u.id ? (
+                        <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+                          <input type="password" placeholder="Новый пароль" value={editPwd} onChange={e=>setEditPwd(e.target.value)} style={{ ...S.inp, width:130 }} />
+                          <button onClick={()=>changePwd(u.id)} style={S.btn("#166534","white")}>OK</button>
+                          <button onClick={()=>setEditId(null)} style={S.btn("#f3f4f6","#374151")}>Отмена</button>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+                          <button onClick={()=>{setEditId(u.id);setEditPwd("");}} style={{ ...S.btn("#eff6ff","#1d4ed8"), fontSize:12, padding:"4px 10px" }}>Сменить пароль</button>
+                          {u.id!=="1" && <button onClick={()=>{if(window.confirm("Удалить?"))onSave(users.filter(x=>x.id!==u.id));}} style={{ ...S.btn("#fef2f2","#dc2626"), fontSize:12, padding:"4px 10px" }}>Удалить</button>}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
