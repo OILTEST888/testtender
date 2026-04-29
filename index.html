@@ -339,6 +339,7 @@
       function doSave() {
         if (!data.contractNo.trim()) return alert("Укажите № контракта");
         if (!data.nmck || Number(data.nmck)<=0) return alert("Укажите НМЦК");
+        if (!data.contractFile) return alert("Необходимо прикрепить файл Контракта (вкладка Документы)");
         onSave(data); setDirty(false);
       }
       const econ = calcEcon(data);
@@ -430,8 +431,8 @@
                   <th style={{ ...S.th, minWidth:180 }}>Контрагент</th>
                   <th style={{ ...S.th, minWidth:120 }}>№ счёта</th>
                   <th style={{ ...S.th, minWidth:130 }}>Дата счёта</th>
-                  <th style={{ ...S.th, minWidth:150, textAlign:"right" }}>Стоимость ₽</th>
-                  <th style={{ ...S.th, minWidth:130, textAlign:"right" }}>Доставка ₽</th>
+                  <th style={{ ...S.th, minWidth:180, textAlign:"right" }}>Стоимость ₽</th>
+                  <th style={{ ...S.th, minWidth:160, textAlign:"right" }}>Доставка ₽</th>
                   <th style={{ ...S.th, minWidth:140 }}>УПД входящий</th>
                   {canEdit&&<th style={{ ...S.th, width:36 }}></th>}
                 </tr></thead>
