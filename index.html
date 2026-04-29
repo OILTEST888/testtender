@@ -21,8 +21,9 @@
     const DEFAULT_USERS = [
       { id: "1", username: "admin", password: "admin123", role: "admin", name: "Администратор" },
       { id: "2", username: "buh", password: "buh123", role: "accountant", name: "Бухгалтерия" },
-      { id: "4", username: "manager1", password: "mgr123", role: "manager", name: "Иванов И.И." },
-      { id: "5", username: "manager2", password: "mgr123", role: "manager", name: "Петрова А.С." },
+      { id: "4", username: "panzukova", password: "mgr123", role: "manager", name: "Панжукова Наталья", kpi: 30 },
+      { id: "5", username: "orlov", password: "mgr123", role: "manager", name: "Орлов Никита", kpi: 30 },
+      { id: "6", username: "shakhov", password: "mgr123", role: "manager", name: "Шахов Олег", kpi: 30 },
     ];
 
     const ROLE_LABELS = { admin: "Администратор", accountant: "Бухгалтерия", manager: "Менеджер" };
@@ -36,7 +37,7 @@
       return parts.join(",");
     }
 
-    function calcEcon(c) {
+    function calcEcon(c, users) {
       const nmck = Number(c.nmck) || 0;
       const purchases = c.purchases || [];
       const stoimost = purchases.reduce((s, p) => s + (Number(p.stoimost) || 0), 0);
@@ -45,8 +46,10 @@
       const nds = nmck * 0.05;
       const dohod = nmck - nds;
       const chp = (dohod - rashod) * 0.15;
-      const dolya = chp * 0.30;
-      return { nds, dohod, rashod, chp, dolya, stoimost, dostavka };
+      const mgr = users ? users.find(u => u.id === c.managerId) : null;
+      const kpi = mgr?.kpi != null ? Number(mgr.kpi) : 30;
+      const dolya = chp * (kpi / 100);
+      return { nds, dohod, rashod, chp, dolya, stoimost, dostavka, kpi };
     }
 
     function fileToBase64(file) {
@@ -194,8 +197,8 @@
       });
 
       const totNmck = filtered.reduce((s,c)=>s+(Number(c.nmck)||0),0);
-      const totChp = filtered.reduce((s,c)=>s+calcEcon(c).chp,0);
-      const totDolya = filtered.reduce((s,c)=>s+calcEcon(c).dolya,0);
+      const totChp = filtered.reduce((s,c)=>s+calcEcon(c,users).chp,0);
+      const totDolya = filtered.reduce((s,c)=>s+calcEcon(c,users).dolya,0);
 
       function confirmDelete() {
         const admin = users.find(u=>u.role==="admin");
@@ -283,7 +286,7 @@
                 </thead>
                 <tbody>
                   {filtered.map((c,idx)=>{
-                    const e = calcEcon(c);
+                    const e = calcEcon(c, users);
                     const mgr = users.find(u=>u.id===c.managerId);
                     const cts = [...new Set((c.purchases||[]).map(p=>p.contragent).filter(Boolean))];
                     return (
@@ -342,7 +345,7 @@
         if (!data.contractFile) return alert("Необходимо прикрепить файл Контракта (вкладка Документы)");
         onSave(data); setDirty(false);
       }
-      const econ = calcEcon(data);
+      const econ = calcEcon(data, users);
       const canEdit = user.role==="admin"||user.role==="manager";
       const mgr = users.find(u=>u.id===data.managerId);
       const tabs = [["main","Основное"],["purchases","Закупки / Счета"],["econ","Экономика"],["docs","Документы"]];
@@ -607,7 +610,7 @@
       const managers = users.filter(u=>u.role==="manager");
       const mgrStats = managers.map(mgr=>{
         const mc = contracts.filter(c=>c.managerId===mgr.id);
-        const due = mc.reduce((s,c)=>s+calcEcon(c).dolya,0);
+        const due = mc.reduce((s,c)=>s+calcEcon(c,users).dolya,0);
         const paid = mc.reduce((s,c)=>s+(Number(c.payout?.paid)||0),0);
         return { mgr, due, paid, left:due-paid, count:mc.length };
       }).filter(m=>m.count>0);
@@ -657,7 +660,7 @@
               </tr></thead>
               <tbody>
                 {contracts.map((c,idx)=>{
-                  const due=calcEcon(c).dolya,paid=Number(c.payout?.paid)||0,left=due-paid;
+                  const due=calcEcon(c,users).dolya,paid=Number(c.payout?.paid)||0,left=due-paid;
                   const st=payStatus(due,paid);
                   const mgr=users.find(u=>u.id===c.managerId);
                   return (
@@ -681,23 +684,24 @@
     }
 
     function AdminPanel({ users, onSave }) {
-      const [form, setForm] = useState({ username:"", password:"", name:"", role:"manager" });
+      const [form, setForm] = useState({ username:"", password:"", name:"", role:"manager", kpi:30 });
       const [err, setErr] = useState("");
       const [editId, setEditId] = useState(null);
       const [editPwd, setEditPwd] = useState("");
       function addUser() {
         if(!form.username||!form.password||!form.name){setErr("Заполните все поля");return;}
         if(users.find(u=>u.username===form.username)){setErr("Логин занят");return;}
-        onSave([...users,{...form,id:Date.now().toString()}]);
-        setForm({username:"",password:"",name:"",role:"manager"});setErr("");
+        onSave([...users,{...form,id:Date.now().toString(),kpi:form.role==="manager"?Number(form.kpi):null}]);
+        setForm({username:"",password:"",name:"",role:"manager",kpi:30});setErr("");
       }
       function changePwd(id){if(!editPwd)return;onSave(users.map(u=>u.id===id?{...u,password:editPwd}:u));setEditId(null);setEditPwd("");}
+      function changeKpi(id,val){onSave(users.map(u=>u.id===id?{...u,kpi:Number(val)}:u));}
       return (
-        <div style={{ maxWidth:780 }}>
+        <div style={{ maxWidth:900 }}>
           <div style={{ fontSize:20, fontWeight:700, marginBottom:20 }}>Управление пользователями</div>
           <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:"18px 20px", marginBottom:20 }}>
             <div style={{ fontSize:14, fontWeight:600, marginBottom:14 }}>Добавить пользователя</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr", gap:10, marginBottom:10 }}>
               {[["Имя","name","text"],["Логин","username","text"],["Пароль","password","password"]].map(([l,k,t])=>(
                 <div key={k}><div style={{ fontSize:11, color:"#6b7280", marginBottom:4 }}>{l}</div><input type={t} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} style={S.inp} /></div>
               ))}
@@ -708,19 +712,36 @@
                   <option value="admin">Администратор</option>
                 </select>
               </div>
+              {form.role==="manager" && (
+                <div><div style={{ fontSize:11, color:"#6b7280", marginBottom:4 }}>KPI %</div>
+                  <input type="number" min="0" max="100" value={form.kpi} onChange={e=>setForm({...form,kpi:e.target.value})} style={S.inp} />
+                </div>
+              )}
             </div>
             {err&&<div style={{ color:"#dc2626", fontSize:12, marginBottom:8 }}>{err}</div>}
             <button onClick={addUser} style={S.btn("#1e3a5f","white")}>Добавить</button>
           </div>
           <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", overflow:"hidden" }}>
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-              <thead><tr style={{ background:"#f9fafb", borderBottom:"1px solid #e5e7eb" }}>{["Имя","Логин","Роль",""].map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ background:"#f9fafb", borderBottom:"1px solid #e5e7eb" }}>
+                {["Имя","Логин","Роль","KPI %",""].map((h,i)=><th key={i} style={S.th}>{h}</th>)}
+              </tr></thead>
               <tbody>
                 {users.map(u=>(
                   <tr key={u.id} style={{ borderBottom:"1px solid #f3f4f6" }}>
                     <td style={{ ...S.td, fontWeight:500 }}>{u.name}</td>
                     <td style={{ ...S.td, color:"#6b7280" }}>{u.username}</td>
                     <td style={S.td}><span style={{ background:u.role==="admin"?"#fef3c7":u.role==="accountant"?"#eff6ff":"#f0fdf4", color:u.role==="admin"?"#92400e":u.role==="accountant"?"#1d4ed8":"#166534", padding:"2px 10px", borderRadius:6, fontSize:12, fontWeight:500 }}>{ROLE_LABELS[u.role]}</span></td>
+                    <td style={S.td}>
+                      {u.role==="manager" ? (
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <input type="number" min="0" max="100" value={u.kpi??30} onChange={e=>changeKpi(u.id,e.target.value)}
+                            style={{ ...S.inp, width:70, textAlign:"center" }} />
+                          <span style={{ fontSize:12, color:"#6b7280" }}>%</span>
+                          <span style={{ fontSize:11, color:"#9ca3af" }}>от ЧП</span>
+                        </div>
+                      ) : <span style={{ color:"#9ca3af", fontSize:12 }}>—</span>}
+                    </td>
                     <td style={{ ...S.td, textAlign:"right" }}>
                       {editId===u.id?(
                         <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
