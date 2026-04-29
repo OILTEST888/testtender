@@ -9,8 +9,73 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f3f4f6; }
+    body { font-family: system-ui, sans-serif; background: #eef2f7; color: #1a1a2e; }
     input, select, button, textarea { font-family: inherit; }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes slideInLeft {
+      from { opacity: 0; transform: translateX(-16px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes countUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes barGrow {
+      from { width: 0% !important; }
+      to   { }
+    }
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.3); }
+      50%       { box-shadow: 0 0 0 6px rgba(220,38,38,0); }
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.93) translateY(12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    .fade-in-up  { animation: fadeInUp 0.35s ease both; }
+    .fade-in     { animation: fadeIn 0.3s ease both; }
+    .slide-left  { animation: slideInLeft 0.3s ease both; }
+    .bar-grow    { animation: barGrow 0.7s cubic-bezier(.4,0,.2,1) both; }
+    .pulse-red   { animation: pulse-red 1.8s ease-in-out infinite; }
+    .modal-in    { animation: modalIn 0.25s cubic-bezier(.4,0,.2,1) both; }
+
+    /* Кнопки */
+    button { transition: transform 0.12s, box-shadow 0.12s, background 0.15s, opacity 0.15s; }
+    button:hover:not(:disabled) { transform: translateY(-1px); }
+    button:active:not(:disabled) { transform: scale(0.97); }
+
+    /* Строки таблицы */
+    tr { transition: background 0.15s; }
+
+    /* Карточки */
+    .card-hover { transition: transform 0.18s, box-shadow 0.18s; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.09) !important; }
+
+    /* Инпуты */
+    input, select { transition: border-color 0.15s, box-shadow 0.15s; outline: none; }
+    input:focus, select:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+
+    /* Вкладки */
+    .tab-btn { transition: background 0.15s, color 0.15s, font-weight 0.15s; }
+
+    /* Скроллбар */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
   </style>
 </head>
 <body>
@@ -71,6 +136,7 @@
     function payStatus(due, paid) {
       const d = Math.round(due * 100);
       const p = Math.round(paid * 100);
+      if (p > d && d >= 0) return { label: "⚠ Переплата", bg: "#fef2f2", col: "#dc2626" };
       if (d <= 0) return { label: "—", bg: "#f3f4f6", col: "#6b7280" };
       if (p >= d) return { label: "✓ Выплачено", bg: "#dcfce7", col: "#166534" };
       if (p > 0)  return { label: "Частично", bg: "#fef9c3", col: "#92400e" };
@@ -78,10 +144,10 @@
     }
 
     const S = {
-      inp: { border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 10px", fontSize: 13, width: "100%", boxSizing: "border-box", background: "white", minWidth: 0 },
-      th: { padding: "9px 10px", fontWeight: 600, fontSize: 12, color: "#6b7280", background: "#f9fafb", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" },
-      td: { padding: "7px 10px", verticalAlign: "middle", borderBottom: "1px solid #f3f4f6" },
-      btn: (bg, col) => ({ background: bg, color: col, border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontWeight: 500 }),
+      inp: { border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", background: "white", minWidth: 0 },
+      th: { padding: "11px 12px", fontWeight: 600, fontSize: 13, color: "#6b7280", background: "#f8fafc", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" },
+      td: { padding: "10px 12px", verticalAlign: "middle", borderBottom: "1px solid #f3f4f6", fontSize: 14 },
+      btn: (bg, col) => ({ background: bg, color: col, border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 14, cursor: "pointer", fontWeight: 600 }),
     };
 
     function App() {
@@ -122,7 +188,7 @@
       return (
         <div style={{ minHeight:"100vh", background:"#f3f4f6" }}>
           <Nav user={user} onLogout={logout} view={view} onNav={v => { setView(v); setActive(null); }} isAdmin={isAdmin} />
-          <div style={{ maxWidth:1300, margin:"0 auto", padding:"24px 16px" }}>
+          <div style={{ maxWidth:1300, margin:"0 auto", padding:"28px 20px" }} className="fade-in-up">
             {view === "contracts" && !active && <ContractsList contracts={visible} allContracts={contracts} users={users} user={user} onOpen={c=>setActive(c)} onNew={()=>setActive({_new:true})} onSave={persistC} onNavPercent={()=>setView("percent")} />}
             {view === "contracts" && active && <ContractDetail contract={active._new?null:active} user={user} users={users} onBack={()=>setActive(null)} onSave={c=>{const upd=active._new?[...contracts,c]:contracts.map(x=>x.id===c.id?c:x);persistC(upd);setActive(c);}} />}
             {view === "percent" && <PercentView contracts={visible} allContracts={contracts} users={users} user={user} onBack={()=>setView("contracts")} onSave={persistC} />}
@@ -135,16 +201,16 @@
 
     function Nav({ user, onLogout, view, onNav, isAdmin }) {
       return (
-        <div style={{ background:"#1e3a5f", color:"white", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:52, position:"sticky", top:0, zIndex:50 }}>
+        <div style={{ background:"linear-gradient(135deg,#1e3a5f,#1d4ed8)", color:"white", padding:"0 28px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56, position:"sticky", top:0, zIndex:50, boxShadow:"0 2px 12px rgba(30,58,95,0.35)" }}>
           <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-            <span style={{ fontWeight:700, fontSize:16, marginRight:14 }}>📦 КонтрактУчёт</span>
+            <span style={{ fontWeight:800, fontSize:18, marginRight:16, letterSpacing:"-0.3px" }}>📦 КонтрактУчёт</span>
             {[["contracts","Контракты"],["percent","KPI Менеджера"],["analytics","Аналитика"],...(isAdmin?[["admin","Пользователи"]]:[])].map(([k,l])=>
-              <button key={k} onClick={()=>onNav(k)} style={{ background:view===k?"rgba(255,255,255,0.18)":"transparent", border:"none", color:"white", borderRadius:6, padding:"5px 13px", cursor:"pointer", fontSize:13, fontWeight:view===k?600:400 }}>{l}</button>
+              <button key={k} onClick={()=>onNav(k)} className="tab-btn" style={{ background:view===k?"rgba(255,255,255,0.2)":"transparent", border:"none", color:"white", borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:14, fontWeight:view===k?700:400, boxShadow:view===k?"0 2px 8px rgba(0,0,0,0.15)":"none" }}>{l}</button>
             )}
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:12, fontSize:13 }}>
-            <span style={{ color:"#93c5fd" }}>{user.name} · {ROLE_LABELS[user.role]}</span>
-            <button onClick={onLogout} style={{ background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", color:"white", borderRadius:6, padding:"4px 12px", cursor:"pointer", fontSize:13 }}>Выйти</button>
+          <div style={{ display:"flex", alignItems:"center", gap:12, fontSize:14 }}>
+            <span style={{ color:"#bfdbfe", fontWeight:500 }}>{user.name} · {ROLE_LABELS[user.role]}</span>
+            <button onClick={onLogout} style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)", color:"white", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:13 }}>Выйти</button>
           </div>
         </div>
       );
@@ -155,24 +221,25 @@
       function submit() { if (!onLogin(u, p)) setErr("Неверный логин или пароль"); }
       return (
         <div style={{ minHeight:"100vh", background:"#f3f4f6", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:"white", borderRadius:12, padding:32, width:320, boxShadow:"0 2px 16px rgba(0,0,0,0.08)" }}>
-            <div style={{ textAlign:"center", marginBottom:24 }}>
-              <div style={{ fontSize:36, marginBottom:8 }}>📦</div>
-              <div style={{ fontWeight:700, fontSize:20, color:"#1e3a5f" }}>КонтрактУчёт</div>
-              <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Система управления контрактами</div>
+          <div className="modal-in" style={{ background:"white", borderRadius:16, padding:36, width:340, boxShadow:"0 8px 32px rgba(0,0,0,0.12)" }}>
+            <div style={{ textAlign:"center", marginBottom:28 }}>
+              <div style={{ fontSize:44, marginBottom:10 }}>📦</div>
+              <div style={{ fontWeight:800, fontSize:22, color:"#1e3a5f", letterSpacing:"-0.3px" }}>КонтрактУчёт</div>
+              <div style={{ fontSize:13, color:"#6b7280", marginTop:5 }}>Система управления контрактами</div>
             </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
               <input style={S.inp} placeholder="Логин" value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} />
               <input style={S.inp} type="password" placeholder="Пароль" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} />
-              {err && <div style={{ color:"#dc2626", fontSize:12 }}>{err}</div>}
-              <button onClick={submit} style={{ background:"#1e3a5f", color:"white", border:"none", borderRadius:7, padding:"9px", fontSize:14, cursor:"pointer", fontWeight:600 }}>Войти</button>
+              {err && <div style={{ color:"#dc2626", fontSize:13, background:"#fef2f2", padding:"8px 12px", borderRadius:7 }}>{err}</div>}
+              <button onClick={submit} style={{ background:"linear-gradient(135deg,#1e3a5f,#2563eb)", color:"white", border:"none", borderRadius:9, padding:"11px", fontSize:15, cursor:"pointer", fontWeight:700, boxShadow:"0 4px 14px rgba(37,99,235,0.4)", marginTop:4 }}>Войти</button>
             </div>
-            <div style={{ marginTop:16, padding:12, background:"#f8fafc", borderRadius:8, fontSize:11, color:"#6b7280" }}>
-              <div style={{ fontWeight:600, marginBottom:4 }}>Аккаунты:</div>
+            <div style={{ marginTop:18, padding:14, background:"#f8fafc", borderRadius:9, fontSize:12, color:"#6b7280", lineHeight:1.8 }}>
+              <div style={{ fontWeight:700, marginBottom:4, color:"#374151" }}>Аккаунты:</div>
               <div>admin / admin123 — Администратор</div>
               <div>buh / buh123 — Бухгалтерия</div>
-              <div>manager1 / mgr123 — Иванов И.И.</div>
-              <div>manager2 / mgr123 — Петрова А.С.</div>
+              <div>panzukova / mgr123 — Панжукова Н.</div>
+              <div>orlov / mgr123 — Орлов Н.</div>
+              <div>shakhov / mgr123 — Шахов О.</div>
             </div>
           </div>
         </div>
@@ -227,8 +294,8 @@
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
             <div style={{ fontSize:22, fontWeight:700, color:"#111" }}>Контракты</div>
             {(isAdmin||isManager) && (
-              <button onClick={onNew} style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", color:"white", border:"none", borderRadius:10, padding:"11px 24px", fontSize:15, cursor:"pointer", fontWeight:700, boxShadow:"0 4px 14px rgba(37,99,235,0.45)", display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ fontSize:18 }}>＋</span> Новый контракт
+              <button onClick={onNew} style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", color:"white", border:"none", borderRadius:12, padding:"12px 28px", fontSize:16, cursor:"pointer", fontWeight:700, boxShadow:"0 6px 18px rgba(37,99,235,0.45)", display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:20 }}>＋</span> Новый контракт
               </button>
             )}
           </div>
@@ -239,12 +306,12 @@
               { label:"Чистая прибыль", val:fmt(totChp), unit:"₽", color:totChp>=0?"#166534":"#dc2626", click:null },
               { label:"Доля менеджеров (KPI)", val:fmt(totDolya), unit:"₽", color:"#1d4ed8", click:onNavPercent },
             ].map((s,i)=>(
-              <div key={i} onClick={s.click||undefined} style={{ background:"white", borderRadius:10, padding:"14px 18px", border:s.click?"1.5px solid #bfdbfe":"1px solid #e5e7eb", cursor:s.click?"pointer":"default" }}>
+              <div key={i} onClick={s.click||undefined} className="card-hover fade-in-up" style={{ background:"white", borderRadius:12, padding:"16px 20px", border:s.click?"1.5px solid #bfdbfe":"1px solid #e5e7eb", cursor:s.click?"pointer":"default", boxShadow:"0 2px 8px rgba(0,0,0,0.05)", animationDelay:`${i*0.07}s` }}>
                 <div style={{ display:"flex", justifyContent:"space-between" }}>
-                  <div style={{ fontSize:12, color:"#6b7280", fontWeight:500 }}>{s.label}</div>
-                  {s.click && <span style={{ fontSize:11, color:"#3b82f6" }}>→ детали</span>}
+                  <div style={{ fontSize:13, color:"#6b7280", fontWeight:500 }}>{s.label}</div>
+                  {s.click && <span style={{ fontSize:12, color:"#3b82f6", fontWeight:600 }}>→ детали</span>}
                 </div>
-                <div style={{ fontSize:20, fontWeight:700, color:s.color||"#111", marginTop:4 }}>{s.val} <span style={{ fontSize:13, fontWeight:400 }}>{s.unit}</span></div>
+                <div style={{ fontSize:22, fontWeight:800, color:s.color||"#111", marginTop:6 }}>{s.val} <span style={{ fontSize:14, fontWeight:400 }}>{s.unit}</span></div>
               </div>
             ))}
           </div>
@@ -731,35 +798,34 @@
     const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
     const PIE_COLORS = ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#6366f1"];
 
-    function PieChart({ segments, size=220 }) {
+    function HBarChart({ segments }) {
       const total = segments.reduce((s,x)=>s+Math.max(0,x.val),0);
-      if (total <= 0) return <div style={{ textAlign:"center", color:"#9ca3af", fontSize:13, padding:40 }}>Нет данных</div>;
-      let angle = -90;
-      const cx = size/2, cy = size/2, r = size/2 - 10;
-      const paths = segments.filter(s=>s.val>0).map((seg,i)=>{
-        const pct = seg.val/total;
-        const sweep = pct * 360;
-        const a1 = angle * Math.PI/180;
-        const a2 = (angle+sweep) * Math.PI/180;
-        const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
-        const x2 = cx + r*Math.cos(a2), y2 = cy + r*Math.sin(a2);
-        const lg = sweep > 180 ? 1 : 0;
-        const d = `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${lg},1 ${x2},${y2} Z`;
-        angle += sweep;
-        return { d, color: seg.color, label: seg.label, val: seg.val, pct };
-      });
+      if (total <= 0) return <div style={{ textAlign:"center", color:"#9ca3af", fontSize:14, padding:24 }}>Нет данных</div>;
       return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {paths.map((p,i)=>(
-            <path key={i} d={p.d} fill={p.color} stroke="white" strokeWidth={2}>
-              <title>{p.label}: {fmt(p.val)} ₽ ({(p.pct*100).toFixed(1)}%)</title>
-            </path>
-          ))}
-          <circle cx={cx} cy={cy} r={r*0.45} fill="white"/>
-          <text x={cx} y={cy-6} textAnchor="middle" fontSize={11} fill="#6b7280">Итого</text>
-          <text x={cx} y={cy+10} textAnchor="middle" fontSize={10} fill="#111" fontWeight="600">{fmt(total).split(",")[0]}</text>
-          <text x={cx} y={cy+22} textAnchor="middle" fontSize={9} fill="#6b7280">₽</text>
-        </svg>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {segments.filter(s=>s.val>0).map((s,i)=>{
+            const pct = (s.val/total*100).toFixed(1);
+            return (
+              <div key={i} className="slide-left" style={{ animationDelay:`${i*0.08}s` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, marginBottom:6 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:12, height:12, borderRadius:3, background:s.color, flexShrink:0 }}></div>
+                    <span style={{ fontWeight:600, color:"#374151" }}>{s.label}</span>
+                  </div>
+                  <div style={{ display:"flex", gap:12 }}>
+                    <span style={{ color:"#6b7280" }}>{fmt(s.val)} ₽</span>
+                    <span style={{ fontWeight:800, color:s.color, minWidth:44, textAlign:"right" }}>{pct}%</span>
+                  </div>
+                </div>
+                <div style={{ height:32, background:"#f1f5f9", borderRadius:8, overflow:"hidden" }}>
+                  <div className="bar-grow" style={{ height:"100%", width:pct+"%", background:`linear-gradient(90deg,${s.color},${s.color}cc)`, borderRadius:8, display:"flex", alignItems:"center", paddingLeft:10, animationDelay:`${i*0.08+0.1}s` }}>
+                    {pct>8&&<span style={{ fontSize:12, color:"white", fontWeight:700, whiteSpace:"nowrap" }}>{pct}%</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       );
     }
 
@@ -867,28 +933,10 @@
               ))}
             </div>
 
-            {/* Диаграмма + легенда */}
-            <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:24, background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:24, marginBottom:20, alignItems:"center" }}>
-              <div>
-                <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginBottom:12 }}>Доля вклада в компанию (остаток после KPI)</div>
-                <PieChart segments={pieSegments} size={220} />
-              </div>
-              <div>
-                <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginBottom:12 }}>Легенда</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {mgrData.map((m,i)=>{
-                    const pct = totNet>0 ? (Math.max(0,m.net)/totNet*100).toFixed(1) : "0.0";
-                    return (
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ width:14, height:14, borderRadius:3, background:m.color, flexShrink:0 }}></div>
-                        <div style={{ flex:1, fontSize:13, fontWeight:500 }}>{m.mgr.name}</div>
-                        <div style={{ fontSize:12, color:"#6b7280" }}>{fmt(m.net)} ₽</div>
-                        <div style={{ fontSize:12, fontWeight:600, color:m.color, minWidth:42, textAlign:"right" }}>{pct}%</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+            {/* Горизонтальные бары */}
+            <div style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:24, marginBottom:20 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginBottom:16 }}>Доля вклада в компанию (остаток после KPI)</div>
+              <HBarChart segments={pieSegments} />
             </div>
 
             {/* Таблица по менеджерам */}
