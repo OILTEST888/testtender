@@ -66,14 +66,16 @@
     }
 
     function payStatus(due, paid) {
-      if (due <= 0) return { label: "—", bg: "#f3f4f6", col: "#6b7280" };
-      if (paid >= due) return { label: "✓ Выплачено", bg: "#dcfce7", col: "#166534" };
-      if (paid > 0) return { label: "Частично", bg: "#fef9c3", col: "#92400e" };
+      const d = Math.round(due * 100);
+      const p = Math.round(paid * 100);
+      if (d <= 0) return { label: "—", bg: "#f3f4f6", col: "#6b7280" };
+      if (p >= d) return { label: "✓ Выплачено", bg: "#dcfce7", col: "#166534" };
+      if (p > 0)  return { label: "Частично", bg: "#fef9c3", col: "#92400e" };
       return { label: "Не выплачено", bg: "#f3f4f6", col: "#6b7280" };
     }
 
     const S = {
-      inp: { border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 10px", fontSize: 13, width: "100%", boxSizing: "border-box", background: "white" },
+      inp: { border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 10px", fontSize: 13, width: "100%", boxSizing: "border-box", background: "white", minWidth: 0 },
       th: { padding: "9px 10px", fontWeight: 600, fontSize: 12, color: "#6b7280", background: "#f9fafb", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" },
       td: { padding: "7px 10px", verticalAlign: "middle", borderBottom: "1px solid #f3f4f6" },
       btn: (bg, col) => ({ background: bg, color: col, border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 13, cursor: "pointer", fontWeight: 500 }),
@@ -428,8 +430,8 @@
                   <th style={{ ...S.th, minWidth:180 }}>Контрагент</th>
                   <th style={{ ...S.th, minWidth:120 }}>№ счёта</th>
                   <th style={{ ...S.th, minWidth:130 }}>Дата счёта</th>
-                  <th style={{ ...S.th, minWidth:120, textAlign:"right" }}>Стоимость ₽</th>
-                  <th style={{ ...S.th, minWidth:100, textAlign:"right" }}>Доставка ₽</th>
+                  <th style={{ ...S.th, minWidth:150, textAlign:"right" }}>Стоимость ₽</th>
+                  <th style={{ ...S.th, minWidth:130, textAlign:"right" }}>Доставка ₽</th>
                   <th style={{ ...S.th, minWidth:140 }}>УПД входящий</th>
                   {canEdit&&<th style={{ ...S.th, width:36 }}></th>}
                 </tr></thead>
