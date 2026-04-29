@@ -629,11 +629,11 @@
                         <div style={{ fontWeight:700, fontSize:14 }}>👤 {mgr.name}</div>
                         <span style={{ fontSize:11, background:st.bg, color:st.col, padding:"2px 8px", borderRadius:5, fontWeight:500 }}>{st.label}</span>
                       </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:8 }}>
                         {[{label:"К выплате",val:fmt(due),color:"#1d4ed8"},{label:"Выплачено",val:fmt(paid),color:"#166534"},{label:"Остаток",val:fmt(left),color:left>0.01?"#dc2626":"#166534"}].map((s,i)=>(
-                          <div key={i} style={{ background:"#f9fafb", borderRadius:6, padding:"8px 10px" }}>
-                            <div style={{ fontSize:10, color:"#9ca3af", marginBottom:2 }}>{s.label}</div>
-                            <div style={{ fontSize:13, fontWeight:700, color:s.color }}>{s.val} ₽</div>
+                          <div key={i} style={{ background:"#f9fafb", borderRadius:6, padding:"8px 10px", minWidth:0 }}>
+                            <div style={{ fontSize:10, color:"#9ca3af", marginBottom:2, whiteSpace:"nowrap" }}>{s.label}</div>
+                            <div style={{ fontSize:12, fontWeight:700, color:s.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.val} ₽</div>
                           </div>
                         ))}
                       </div>
