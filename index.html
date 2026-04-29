@@ -279,7 +279,7 @@
                     <th style={{ ...S.th, textAlign:"right" }}>НМЦК ₽</th>
                     <th style={{ ...S.th, textAlign:"right" }}>Расход ₽</th>
                     <th style={{ ...S.th, textAlign:"right" }}>ЧП ₽</th>
-                    <th style={{ ...S.th, textAlign:"right" }}>Вознаграждение ₽</th>
+                    <th style={{ ...S.th, textAlign:"right" }}>Доля 30% ₽</th>
                     <th style={{ ...S.th, textAlign:"center" }}>Статус</th>
                     <th style={S.th}></th>
                   </tr>
@@ -612,9 +612,11 @@
       const managers = users.filter(u=>u.role==="manager");
       const mgrStats = managers.map(mgr=>{
         const mc = contracts.filter(c=>c.managerId===mgr.id);
-        const due = mc.reduce((s,c)=>s+calcEcon(c,users).dolya,0);
+        const due  = mc.reduce((s,c)=>s+calcEcon(c,users).dolya,0);
         const paid = mc.reduce((s,c)=>s+(Number(c.payout?.paid)||0),0);
-        return { mgr, due, paid, left:due-paid, count:mc.length };
+        const chp  = mc.reduce((s,c)=>s+calcEcon(c,users).chp,0);
+        const nmck = mc.reduce((s,c)=>s+(Number(c.nmck)||0),0);
+        return { mgr, due, paid, left:due-paid, chp, nmck, count:mc.length };
       }).filter(m=>m.count>0);
       return (
         <div>
@@ -624,27 +626,67 @@
           </div>
           {!isManager&&mgrStats.length>0&&(
             <div style={{ marginBottom:24 }}>
-              <div style={{ fontSize:12, fontWeight:600, color:"#6b7280", marginBottom:10, textTransform:"uppercase", letterSpacing:"0.5px" }}>Сводка по менеджерам</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:12 }}>
-                {mgrStats.map(({mgr,due,paid,left})=>{
-                  const st=payStatus(due,paid);
-                  return (
-                    <div key={mgr.id} style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:"16px 20px" }}>
-                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-                        <div style={{ fontWeight:700, fontSize:14 }}>👤 {mgr.name}</div>
-                        <span style={{ fontSize:11, background:st.bg, color:st.col, padding:"2px 8px", borderRadius:5, fontWeight:500 }}>{st.label}</span>
-                      </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:8 }}>
-                        {[{label:"К выплате",val:fmt(due),color:"#1d4ed8"},{label:"Выплачено",val:fmt(paid),color:"#166534"},{label:"Остаток",val:fmt(left),color:left>0.01?"#dc2626":"#166534"}].map((s,i)=>(
-                          <div key={i} style={{ background:"#f9fafb", borderRadius:6, padding:"8px 10px", minWidth:0 }}>
-                            <div style={{ fontSize:10, color:"#9ca3af", marginBottom:2, whiteSpace:"nowrap" }}>{s.label}</div>
-                            <div style={{ fontSize:12, fontWeight:700, color:s.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.val} ₽</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:8 }}>
+                {/* ФИНАНСЫ */}
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#6b7280", marginBottom:10, textTransform:"uppercase", letterSpacing:"0.5px" }}>Финансы — вклад в компанию</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {mgrStats.map(({mgr,due,chp,nmck,count})=>{
+                      const netToCompany = chp - due;
+                      return (
+                        <div key={mgr.id} style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:"14px 18px" }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                            <div style={{ fontWeight:700, fontSize:14 }}>👤 {mgr.name}</div>
+                            <span style={{ fontSize:11, background:"#f3f4f6", color:"#6b7280", padding:"2px 8px", borderRadius:5 }}>{count} контр.</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:8 }}>
+                            {[
+                              { label:"Сумма НМЦК", val:fmt(nmck), color:"#374151" },
+                              { label:"Чистая прибыль", val:fmt(chp), color:chp>=0?"#166534":"#dc2626" },
+                              { label:`KPI (${mgr.kpi??30}%)`, val:fmt(due), color:"#1d4ed8" },
+                              { label:"Остаток в компании", val:fmt(netToCompany), color:netToCompany>=0?"#166534":"#dc2626" },
+                            ].map((s,i)=>(
+                              <div key={i} style={{ background:"#f9fafb", borderRadius:6, padding:"8px 10px", minWidth:0 }}>
+                                <div style={{ fontSize:10, color:"#9ca3af", marginBottom:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.label}</div>
+                                <div style={{ fontSize:12, fontWeight:700, color:s.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.val} ₽</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* KPI МЕНЕДЖЕРА */}
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#6b7280", marginBottom:10, textTransform:"uppercase", letterSpacing:"0.5px" }}>KPI Менеджера — выплаты</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {mgrStats.map(({mgr,due,paid,left})=>{
+                      const st=payStatus(due,paid);
+                      return (
+                        <div key={mgr.id} style={{ background:"white", borderRadius:10, border:"1px solid #e5e7eb", padding:"14px 18px" }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                            <div style={{ fontWeight:700, fontSize:14 }}>👤 {mgr.name}</div>
+                            <span style={{ fontSize:11, background:st.bg, color:st.col, padding:"2px 8px", borderRadius:5, fontWeight:500 }}>{st.label}</span>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:8 }}>
+                            {[
+                              { label:"К выплате", val:fmt(due), color:"#1d4ed8" },
+                              { label:"Выплачено", val:fmt(paid), color:"#166534" },
+                              { label:"Остаток", val:fmt(left), color:left>0.01?"#dc2626":"#166534" },
+                            ].map((s,i)=>(
+                              <div key={i} style={{ background:"#f9fafb", borderRadius:6, padding:"8px 10px", minWidth:0 }}>
+                                <div style={{ fontSize:10, color:"#9ca3af", marginBottom:2, whiteSpace:"nowrap" }}>{s.label}</div>
+                                <div style={{ fontSize:12, fontWeight:700, color:s.color, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.val} ₽</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}
